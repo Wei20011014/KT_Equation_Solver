@@ -1,4 +1,4 @@
-
+"""
 All masses are given in GeV.
 All Mandelstam variables are in GeV^2.
 

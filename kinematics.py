@@ -1,74 +1,42 @@
-# ============================================================
-# Cell 1: Physical parameters
-# ============================================================
 
-# 质量单位统一为 GeV
-m_D1 = 2.420000
-m_D  = 1.867000
-m_pi = 0.13957039
+All masses are given in GeV.
+All Mandelstam variables are in GeV^2.
 
-
-# 检查质量是否为正
-if m_D1 <= 0 or m_D <= 0 or m_pi <= 0:
-    raise ValueError("所有粒子质量必须为正数。")
-
-
-# 检查三体衰变是否运动学允许
-if m_D1 <= m_D + 2.0*m_pi:
-    raise ValueError(
-        "D1 -> D pi pi 在当前质量下不允许。"
-    )
-
-
-# Mandelstam identity:
-# s + t + u = Sigma
-Sigma = (
-    m_D1**2
-    + m_D**2
-    + 2.0*m_pi**2
-)
-
-
-# s-channel physical range
-s_decay_min = (2.0*m_pi)**2
-s_decay_max = (m_D1 - m_D)**2
-
-
-# t-channel global physical range
-t_decay_min = (m_D + m_pi)**2
-t_decay_max = (m_D1 - m_pi)**2
-
-
-# u-channel global physical range
-u_decay_min = t_decay_min
-u_decay_max = t_decay_max
-
-
-print(f"m_D1  = {m_D1:.9f} GeV")
-print(f"m_D   = {m_D:.9f} GeV")
-print(f"m_pi  = {m_pi:.9f} GeV")
-print(f"Sigma = {Sigma:.9f} GeV^2")
-
-print(
-    f"s range = "
-    f"[{s_decay_min:.9f}, "
-    f"{s_decay_max:.9f}] GeV^2"
-)
+The functions in this file use real square roots and are intended
+for calculations in the real decay region. Complex analytic
+continuation will require a separate square-root prescription.
+"""
 
 import numpy as np
 
+# 1. Physical parameters
+m_D1 = 2.420000       # GeV
+m_D = 1.867000        # GeV
+m_pi = 0.13957039     # GeV
+Sigma = (m_D1**2 + m_D**2 + 2.0*m_pi**2)
+subtraction_center = Sigma / 3.0
 
-# ============================================================
-# Källén 函数
-# ============================================================
 
+Q_value = (m_D1 - m_D - 2.0*m_pi)
+# Mass combination appearing in z_t and z_u.
+Delta_Dpi = ( (m_D1**2 - m_pi**2) * (m_D**2 - m_pi**2) )
+
+s_threshold = (2.0*m_pi)**2
+s_decay_min = s_threshold
+s_decay_max = (m_D1 - m_D)**2
+# t = (p_D + p_pi1)^2
+t_threshold = (m_D + m_pi)**2
+t_decay_min = t_threshold
+t_decay_max = (m_D1 - m_pi)**2
+# u = (p_D + p_pi2)^2
+u_threshold = t_threshold
+u_decay_min = t_decay_min
+u_decay_max = t_decay_max
 def kallen(x, y, z):
-    """
-    Källén 函数：
+    x = np.asarray(x)
+    y = np.asarray(y)
+    z = np.asarray(z)
 
-    lambda(x,y,z)
-    = x^2 + y^2 + z^2 - 2xy - 2xz - 2yz
-    """
     return (
         x**2
         + y**2
@@ -81,39 +49,43 @@ def kallen(x, y, z):
 
 def physical_sqrt(x, tolerance=1e-12):
     """
-    对物理区内应当非负的量计算平方根。
+    Square root for calculations in the real physical region.
 
-    阈值附近可能因为浮点误差出现很小的负数，
-    例如 -1e-16，此时将其截断为 0。
+    Very small negative values caused by floating-point errors
+    are replaced by zero.
 
-    如果出现明显负数，则说明输入可能超出物理区。
+    A significantly negative value raises an error.
+
+    This function must not be used for complex analytic
+    continuation.
     """
     x = np.asarray(x, dtype=float)
 
     if np.any(x < -tolerance):
         raise ValueError(
-            "平方根内部出现明显负数，"
-            "输入可能位于当前函数所定义的物理区之外。"
+            "The square-root argument is negative. "
+            "The input may lie outside the real physical region."
         )
 
-    return np.sqrt(np.clip(x, 0.0, None))
+    return np.sqrt(
+        np.clip(x, 0.0, None)
+    )
+
 
 # ============================================================
-# s-channel kinematics
-#
-# s = (p_pi1 + p_pi2)^2
+# 5. Useful s-channel quantities
 # ============================================================
 
 def sigma_pi(s):
     """
-    pi-pi 两体相空间因子：
+    Two-pion phase-space factor:
 
     sigma_pi(s) = sqrt(1 - 4*m_pi^2/s)
     """
     s = np.asarray(s, dtype=float)
 
     if np.any(s <= 0.0):
-        raise ValueError("s 必须大于 0。")
+        raise ValueError("s must be positive.")
 
     return physical_sqrt(
         1.0 - 4.0*m_pi**2/s
@@ -122,34 +94,65 @@ def sigma_pi(s):
 
 def lambda_D1_D_s(s):
     """
-    lambda(m_D1^2, m_D^2, s)
+    Return
+
+    lambda(s, m_D1^2, m_D^2).
     """
     return kallen(
+        s,
         m_D1**2,
-        m_D**2,
-        s
+        m_D**2
     )
+
 
 def E_pi_s(s):
     """
-    pi-pi 质心系中，每个 pion 的能量。
+    Pion energy in the pi-pi center-of-mass frame:
+
+    E_pi(s) = sqrt(s)/2.
     """
+    s = np.asarray(s, dtype=float)
+
+    if np.any(s <= 0.0):
+        raise ValueError("s must be positive.")
+
     return np.sqrt(s) / 2.0
 
 
 def q_pi_s(s):
     """
-    pi-pi 质心系中，每个 pion 的三动量大小。
+    Pion momentum in the pi-pi center-of-mass frame:
+
+               sqrt(lambda(s,m_pi^2,m_pi^2))
+    q_pi(s) = --------------------------------
+                         2*sqrt(s)
     """
-    return 0.5 * physical_sqrt(
-        s - 4.0*m_pi**2
+    s = np.asarray(s, dtype=float)
+
+    if np.any(s <= 0.0):
+        raise ValueError("s must be positive.")
+
+    return (
+        physical_sqrt(
+            kallen(s, m_pi**2, m_pi**2)
+        )
+        / (2.0*np.sqrt(s))
     )
 
 
 def E_D_s(s):
     """
-    pi-pi 质心系中，D 介子的能量。
+    D-meson energy in the pi-pi center-of-mass frame:
+
+             m_D1^2 - m_D^2 - s
+    E_D(s) = --------------------
+                    2*sqrt(s)
     """
+    s = np.asarray(s, dtype=float)
+
+    if np.any(s <= 0.0):
+        raise ValueError("s must be positive.")
+
     return (
         m_D1**2
         - m_D**2
@@ -159,27 +162,49 @@ def E_D_s(s):
 
 def p_D_s(s):
     """
-    pi-pi 质心系中，D 介子的三动量大小。
+    D-meson momentum in the pi-pi center-of-mass frame:
+
+              sqrt(lambda(s,m_D1^2,m_D^2))
+    p_D(s) = --------------------------------
+                        2*sqrt(s)
     """
+    s = np.asarray(s, dtype=float)
+
+    if np.any(s <= 0.0):
+        raise ValueError("s must be positive.")
+
     return (
-        physical_sqrt(lambda_D1_D_s(s))
+        physical_sqrt(
+            kallen(s, m_D1**2, m_D**2)
+        )
         / (2.0*np.sqrt(s))
     )
 
+
 # ============================================================
-# s-channel Mandelstam-variable mapping
-#
-# Convention:
-#
-#             u - t
-# z_s = -------------------------------
-#        sqrt(lambda_1)*sqrt(lambda_2)/s
+# 6. s-channel Mandelstam-variable mapping
 # ============================================================
 
 def t_of_s_z(s, z_s):
     """
-    给定 s 和 z_s，计算 t。
+    Calculate t from s and z_s.
+
+    Angle convention:
+
+                  u - t
+    z_s = ----------------------------------
+          sqrt(lambda_s1)*sqrt(lambda_s2)/s
+
+    Therefore:
+
+        t = (Sigma - s - denominator*z_s)/2.
     """
+    s = np.asarray(s, dtype=float)
+    z_s = np.asarray(z_s, dtype=float)
+
+    if np.any(s <= 0.0):
+        raise ValueError("s must be positive.")
+
     denominator = (
         physical_sqrt(
             kallen(s, m_D1**2, m_D**2)
@@ -199,8 +224,24 @@ def t_of_s_z(s, z_s):
 
 def u_of_s_z(s, z_s):
     """
-    给定 s 和 z_s，计算 u。
+    Calculate u from s and z_s.
+
+    Angle convention:
+
+                  u - t
+    z_s = ----------------------------------
+          sqrt(lambda_s1)*sqrt(lambda_s2)/s
+
+    Therefore:
+
+        u = (Sigma - s + denominator*z_s)/2.
     """
+    s = np.asarray(s, dtype=float)
+    z_s = np.asarray(z_s, dtype=float)
+
+    if np.any(s <= 0.0):
+        raise ValueError("s must be positive.")
+
     denominator = (
         physical_sqrt(
             kallen(s, m_D1**2, m_D**2)
@@ -218,41 +259,20 @@ def u_of_s_z(s, z_s):
     ) / 2.0
 
 
-def z_s_from_s_t(s, t):
-    """
-    从 s 和 t 反求 z_s。
-    """
-    u = Sigma - s - t
-
-    denominator = (
-        physical_sqrt(
-            kallen(s, m_D1**2, m_D**2)
-        )
-        * physical_sqrt(
-            kallen(s, m_pi**2, m_pi**2)
-        )
-        / s
-    )
-
-    if np.any(np.abs(denominator) < 1e-14):
-        raise ValueError(
-            "分母接近零，当前 s 位于运动学端点。"
-        )
-
-    return (u - t) / denominator
-
 # ============================================================
-# Cell 5: Kinematic limits at fixed s
+# 7. Kinematic limits at fixed s
 # ============================================================
 
 def t_limits(s):
     """
-    固定 s 时，返回 t 的允许范围：
+    Return the allowed t interval at fixed s:
 
-    t_min(s) <= t <= t_max(s)
+    t_min(s) <= t <= t_max(s).
 
-    当前角变量约定：
-        z_s = (u-t)/(...)
+    With the current convention:
+
+    z_s = +1 gives t_min,
+    z_s = -1 gives t_max.
     """
     t_min = t_of_s_z(s, 1.0)
     t_max = t_of_s_z(s, -1.0)
@@ -262,136 +282,240 @@ def t_limits(s):
 
 def u_limits(s):
     """
-    固定 s 时，返回 u 的允许范围：
+    Return the allowed u interval at fixed s:
 
-    u_min(s) <= u <= u_max(s)
+    u_min(s) <= u <= u_max(s).
+
+    With the current convention:
+
+    z_s = -1 gives u_min,
+    z_s = +1 gives u_max.
     """
     u_min = u_of_s_z(s, -1.0)
     u_max = u_of_s_z(s, 1.0)
 
     return u_min, u_max
 
-# ============================================================
-# Cell 6: Test the s-channel kinematics
-# ============================================================
-
-# 选择 s 物理区内部的一个测试点
-s_test = 0.5 * (
-    s_decay_min + s_decay_max
-)
-
-# 选择若干 z_s 测试点
-z_test = np.array([
-    -1.0,
-    -0.5,
-     0.0,
-     0.5,
-     1.0
-])
-
-# 根据 s 和 z_s 计算 t、u
-t_test = t_of_s_z(s_test, z_test)
-u_test = u_of_s_z(s_test, z_test)
-
 
 # ============================================================
-# Test 1: Mandelstam identity
-#
-# s + t + u = Sigma
+# 8. t-channel Mandelstam-variable mapping
 # ============================================================
 
-assert np.allclose(
-    s_test + t_test + u_test,
-    Sigma
-)
+def s_of_t_z(t, z_t):
+    """
+    Calculate s from t and z_t.
 
+    Angle convention:
 
-# ============================================================
-# Test 2: Verify the definition of z_s
-#
-#             u - t
-# z_s = -------------------------------
-#        sqrt(lambda_1)*sqrt(lambda_2)/s
-# ============================================================
+             s - u + Delta_Dpi/t
+    z_t = ----------------------------------
+          sqrt(lambda_t1)*sqrt(lambda_t2)/t
 
-denominator_test = (
-    physical_sqrt(
-        kallen(s_test, m_D1**2, m_D**2)
+    Therefore:
+
+        s = (
+            Sigma - t
+            + denominator*z_t
+            - Delta_Dpi/t
+        ) / 2.
+    """
+    t = np.asarray(t, dtype=float)
+    z_t = np.asarray(z_t, dtype=float)
+
+    if np.any(t <= 0.0):
+        raise ValueError("t must be positive.")
+
+    denominator = (
+        physical_sqrt(
+            kallen(t, m_D1**2, m_pi**2)
+        )
+        * physical_sqrt(
+            kallen(t, m_D**2, m_pi**2)
+        )
+        / t
     )
-    * physical_sqrt(
-        kallen(s_test, m_pi**2, m_pi**2)
+
+    return (
+        Sigma
+        - t
+        + denominator*z_t
+        - Delta_Dpi/t
+    ) / 2.0
+
+
+def u_of_t_z(t, z_t):
+    """
+    Calculate u from t and z_t.
+
+    Angle convention:
+
+             s - u + Delta_Dpi/t
+    z_t = ----------------------------------
+          sqrt(lambda_t1)*sqrt(lambda_t2)/t
+
+    Therefore:
+
+        u = (
+            Sigma - t
+            - denominator*z_t
+            + Delta_Dpi/t
+        ) / 2.
+    """
+    t = np.asarray(t, dtype=float)
+    z_t = np.asarray(z_t, dtype=float)
+
+    if np.any(t <= 0.0):
+        raise ValueError("t must be positive.")
+
+    denominator = (
+        physical_sqrt(
+            kallen(t, m_D1**2, m_pi**2)
+        )
+        * physical_sqrt(
+            kallen(t, m_D**2, m_pi**2)
+        )
+        / t
     )
-    / s_test
-)
 
-z_from_definition = (
-    u_test - t_test
-) / denominator_test
-
-assert np.allclose(
-    z_from_definition,
-    z_test
-)
+    return (
+        Sigma
+        - t
+        - denominator*z_t
+        + Delta_Dpi/t
+    ) / 2.0
 
 
 # ============================================================
-# Test 3: Pion exchange
-#
-# t <-> u corresponds to z_s -> -z_s
+# 9. Kinematic limits at fixed t
 # ============================================================
 
-assert np.allclose(
-    t_of_s_z(s_test, z_test),
-    u_of_s_z(s_test, -z_test)
-)
+def s_limits_at_t(t):
+    """
+    Return the allowed s interval at fixed t.
+    """
+    s_min = s_of_t_z(t, -1.0)
+    s_max = s_of_t_z(t, 1.0)
+
+    return s_min, s_max
 
 
-# ============================================================
-# Test 4: Check the kinematic limits
-# ============================================================
+def u_limits_at_t(t):
+    """
+    Return the allowed u interval at fixed t.
+    """
+    u_min = u_of_t_z(t, 1.0)
+    u_max = u_of_t_z(t, -1.0)
 
-t_min_test, t_max_test = t_limits(s_test)
-u_min_test, u_max_test = u_limits(s_test)
-
-assert np.all(t_test >= t_min_test)
-assert np.all(t_test <= t_max_test)
-
-assert np.all(u_test >= u_min_test)
-assert np.all(u_test <= u_max_test)
+    return u_min, u_max
 
 
 # ============================================================
-# Display results
+# 10. u-channel Mandelstam-variable mapping
 # ============================================================
 
-print("All s-channel kinematic tests passed.")
+def s_of_u_z(u, z_u):
+    """
+    Calculate s from u and z_u.
 
-print()
-print(f"s = {s_test:.9f} GeV^2")
+    Angle convention:
 
-print()
-print(
-    f"t range = "
-    f"[{t_min_test:.9f}, {t_max_test:.9f}] GeV^2"
-)
+             s - t + Delta_Dpi/u
+    z_u = ----------------------------------
+          sqrt(lambda_u1)*sqrt(lambda_u2)/u
 
-print(
-    f"u range = "
-    f"[{u_min_test:.9f}, {u_max_test:.9f}] GeV^2"
-)
+    Therefore:
 
-print()
-print("z_s values:")
-print(z_test)
+        s = (
+            Sigma - u
+            + denominator*z_u
+            - Delta_Dpi/u
+        ) / 2.
+    """
+    u = np.asarray(u, dtype=float)
+    z_u = np.asarray(z_u, dtype=float)
 
-print()
-print("t values:")
-print(t_test)
+    if np.any(u <= 0.0):
+        raise ValueError("u must be positive.")
 
-print()
-print("u values:")
-print(u_test)
+    denominator = (
+        physical_sqrt(
+            kallen(u, m_D1**2, m_pi**2)
+        )
+        * physical_sqrt(
+            kallen(u, m_D**2, m_pi**2)
+        )
+        / u
+    )
 
-print()
-print("z_s reconstructed directly from its definition:")
-print(z_from_definition)
+    return (
+        Sigma
+        - u
+        + denominator*z_u
+        - Delta_Dpi/u
+    ) / 2.0
+
+
+def t_of_u_z(u, z_u):
+    """
+    Calculate t from u and z_u.
+
+    Angle convention:
+
+             s - t + Delta_Dpi/u
+    z_u = ----------------------------------
+          sqrt(lambda_u1)*sqrt(lambda_u2)/u
+
+    Therefore:
+
+        t = (
+            Sigma - u
+            - denominator*z_u
+            + Delta_Dpi/u
+        ) / 2.
+    """
+    u = np.asarray(u, dtype=float)
+    z_u = np.asarray(z_u, dtype=float)
+
+    if np.any(u <= 0.0):
+        raise ValueError("u must be positive.")
+
+    denominator = (
+        physical_sqrt(
+            kallen(u, m_D1**2, m_pi**2)
+        )
+        * physical_sqrt(
+            kallen(u, m_D**2, m_pi**2)
+        )
+        / u
+    )
+
+    return (
+        Sigma
+        - u
+        - denominator*z_u
+        + Delta_Dpi/u
+    ) / 2.0
+
+
+# ============================================================
+# 11. Kinematic limits at fixed u
+# ============================================================
+
+def s_limits_at_u(u):
+    """
+    Return the allowed s interval at fixed u.
+    """
+    s_min = s_of_u_z(u, -1.0)
+    s_max = s_of_u_z(u, 1.0)
+
+    return s_min, s_max
+
+
+def t_limits_at_u(u):
+    """
+    Return the allowed t interval at fixed u.
+    """
+    t_min = t_of_u_z(u, 1.0)
+    t_max = t_of_u_z(u, -1.0)
+
+    return t_min, t_max
